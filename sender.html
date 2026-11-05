@@ -20,6 +20,7 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
   <input id="host" type="text" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:4061">
 </label>
 <label><input id="stream" type="checkbox"> Flujo continuo</label>
+<label><input id="draw" type="checkbox"> Lista de dibujo</label>
 <p><google-cast-launcher></google-cast-launcher> <button id="send">Volver a enviar</button> <span id="state"></span></p>
 <pre id="log"></pre>
 <script>
@@ -29,6 +30,7 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
   var APP_ID = 'CA1529D1';
   var hostInput = document.getElementById('host');
   var streamInput = document.getElementById('stream');
+  var drawInput = document.getElementById('draw');
   var logBox = document.getElementById('log');
   var session = null;
 
@@ -49,7 +51,7 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
     if (!session) { log('Pulsa antes el botón Cast.'); return; }
     if (!host()) { log('Escribe la dirección que sale en el juego.'); return; }
     try { localStorage.setItem('castHost', hostInput.value.trim()); } catch (x) {}
-    session.sendMessage(NS, { type: 'screen', host: host(), stream: streamInput.checked }).catch(function (e) {
+    session.sendMessage(NS, { type: 'screen', host: host(), stream: streamInput.checked, draw: drawInput.checked }).catch(function (e) {
       log('No se pudo enviar: ' + JSON.stringify(e));
     });
   }
