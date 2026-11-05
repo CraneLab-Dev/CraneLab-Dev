@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hold On, Trooper! · Enviar a la tele</title>
+<style>
+body { font: 17px/1.45 system-ui, sans-serif; margin: 24px auto; padding: 0 16px; max-width: 560px; background: #101418; color: #e8eef2; }
+h1 { font-size: 24px; }
+label { display: block; margin: 16px 0; }
+input[type=text] { display: block; box-sizing: border-box; width: 100%; margin-top: 6px; padding: 10px; font: inherit; }
+google-cast-launcher { display: inline-block; width: 48px; height: 48px; vertical-align: middle; cursor: pointer; --connected-color: #6cc4ff; --disconnected-color: #e8eef2; }
+button { padding: 10px 16px; font: inherit; }
+pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; color: #a9b8c2; }
+</style>
+</head>
+<body>
+<h1>Hold On, Trooper!</h1>
+<label>Dirección de la tele que sale en el juego
+  <input id="host" type="text" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:4061">
+</label>
+<label><input id="poll" type="checkbox"> Imagen a imagen</label>
+<p><google-cast-launcher></google-cast-launcher> <button id="send">Volver a enviar</button> <span id="state"></span></p>
+<pre id="log"></pre>
+<script>
+(function () {
+  'use strict';
+  var NS = 'urn:x-cast:com.holdontrooper.screen';
+  var APP_ID = 'CA1529D1';
+  var hostInput = document.getElementById('host');
+  var pollInput = document.getElementById('poll');
+  var logBox = document.getElementById('log');
+  var session = null;
+
+  function log(text) { logBox.textContent += text + '\n'; }
+
+  function stored() {
+    try { return localStorage.getItem('castHost') || ''; } catch (x) { return ''; }
+  }
+
+  // Takes what the game shows, with or without scheme: host:port.
+  function host() {
+    return hostInput.value.trim().replace(/^https?:\/\//i, '').replace(/\/.*$/, '');
+  }
+
+  hostInput.value = decodeURIComponent(location.hash.slice(1)) || stored();
+
+  function send() {
+    if (!session) { log('Pulsa antes el botón Cast.'); return; }
+    if (!host()) { log('Escribe la dirección que sale en el juego.'); return; }
+    try { localStorage.setItem('castHost', hostInput.value.trim()); } catch (x) {}
+    session.sendMessage(NS, { type: 'screen', host: host(), poll: pollInput.checked }).catch(function (e) {
+      log('No se pudo enviar: ' + JSON.stringify(e));
+    });
+  }
+
+  function onMessage(ns, raw) {
+    var msg = typeof raw === 'string' ? JSON.parse(raw) : raw;
+    if (msg.type === 'status') log(msg.state + ': ' + msg.detail);
+  }
+
+  document.getElementById('send').onclick = send;
+
+  window.__onGCastApiAvailable = function (available) {
+    if (!available) { log('Este navegador no tiene Cast: usa Chrome.'); return; }
+    var castContext = cast.framework.CastContext.getInstance();
+    castContext.setOptions({ receiverApplicationId: APP_ID, autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED });
+    castContext.addEventListener(cast.framework.CastContextEventType.SESSION_STATE_CHANGED, function (e) {
+      document.getElementById('state').textContent = e.sessionState;
+      if (e.sessionState === cast.framework.SessionState.SESSION_STARTED ||
+          e.sessionState === cast.framework.SessionState.SESSION_RESUMED) {
+        session = castContext.getCurrentSession();
+        session.addMessageListener(NS, onMessage);
+        log('Conectado a ' + session.getCastDevice().friendlyName);
+        send();
+      } else if (e.sessionState === cast.framework.SessionState.SESSION_ENDED) {
+        session = null;
+      }
+    });
+  };
+})();
+</script>
+<script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+</body>
+</html>

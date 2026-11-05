@@ -1,0 +1,151 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hold On, Trooper!</title>
+<!-- Protocol-relative, as Google recommends: same scheme as this page. -->
+<script src="//www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<style>
+html, body { margin: 0; width: 100%; height: 100%; background: #000; overflow: hidden; }
+img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit: contain; visibility: hidden; }
+#wait { position: absolute; left: 0; right: 0; top: 45%; text-align: center; color: #e8eef2; font: 32px sans-serif; }
+</style>
+</head>
+<body>
+<div id="wait">Hold On, Trooper!</div>
+<script>
+// The TV side of Hold On, Trooper!: the game runs on a phone, the sender gives its address and
+// this page shows the frames the phone serves, as the page the phone serves itself does.
+(function () {
+  'use strict';
+  var NS = 'urn:x-cast:com.holdontrooper.screen';
+  var FIRST_FRAME_MS = 3000, RENEW_MS = 6000, POLL_RETRY_MS = 500, POLL_STALL_MS = 3000, REPORT_MS = 2000;
+  var POLL_FAILURES = 5;
+
+  var context = cast.framework.CastReceiverContext.getInstance();
+  var wait = document.getElementById('wait');
+  var sender = null, base = '';
+  var run = 0, serial = 0, shown = null, everShown = false;
+
+  function report(state, detail) {
+    if (!sender) return;
+    try {
+      context.sendCustomMessage(NS, sender, { type: 'status', state: state, detail: detail || '' });
+    } catch (x) {}
+  }
+
+  function make(src) {
+    var img = document.createElement('img');
+    img.src = src;
+    document.body.appendChild(img);
+    return img;
+  }
+
+  // Closes the connection of an image and takes it off the page.
+  function drop(img) {
+    if (!img) return;
+    img.onload = img.onerror = null;
+    img.src = 'data:,';
+    if (img.parentNode) img.parentNode.removeChild(img);
+  }
+
+  function show(img) {
+    img.style.visibility = 'visible';
+    wait.style.display = 'none';
+    var old = shown;
+    shown = img;
+    everShown = true;
+    if (old !== img) drop(old);
+  }
+
+  // A stream comes up beside the one on screen and takes over when it has a picture.
+  function startStream(mine) {
+    var img = make(base + '/stream?' + (++serial));
+    var waited = 0, first = !everShown;
+    var timer = setInterval(function () {
+      if (mine !== run) { clearInterval(timer); drop(img); return; }
+      if (img.naturalWidth > 0) {
+        clearInterval(timer);
+        show(img);
+        if (first) report('playing', 'stream ' + img.naturalWidth + 'x' + img.naturalHeight);
+        setTimeout(function () { if (mine === run) startStream(mine); }, RENEW_MS);
+        return;
+      }
+      waited += 100;
+      if (waited < FIRST_FRAME_MS) return;
+      clearInterval(timer);
+      drop(img);
+      if (everShown) {  // the game went away: wait for it
+        setTimeout(function () { if (mine === run) startStream(mine); }, POLL_RETRY_MS);
+      } else {
+        report('fallback', 'no stream in ' + FIRST_FRAME_MS + ' ms: one picture at a time');
+        startPolling(mine);
+      }
+    }, 100);
+  }
+
+  // One picture at a time: the next loads behind the one on screen. Reports the rate it reaches.
+  function startPolling(mine) {
+    var lastLoad = Date.now(), lastReport = Date.now();
+    var pending = null, frames = 0, failures = 0;
+    function next() {
+      if (mine !== run) return;
+      drop(pending);
+      var img = make(base + '/frame.jpg?' + (++serial));
+      pending = img;
+      img.onload = function () {
+        pending = null;
+        lastLoad = Date.now();
+        failures = 0;
+        ++frames;
+        show(img);
+        if (lastLoad - lastReport >= REPORT_MS) {
+          report('fps', (frames * 1000 / (lastLoad - lastReport)).toFixed(1) + ' fps, ' + img.naturalWidth + 'x' + img.naturalHeight);
+          frames = 0;
+          lastReport = lastLoad;
+        }
+        next();
+      };
+      img.onerror = function () {
+        pending = null;
+        drop(img);
+        if (++failures === POLL_FAILURES) report('failed', 'no picture from ' + base + ' (page on ' + location.protocol + ')');
+        setTimeout(next, POLL_RETRY_MS);
+      };
+    }
+    var watchdog = setInterval(function () {
+      if (mine !== run) { clearInterval(watchdog); return; }
+      if (Date.now() - lastLoad > POLL_STALL_MS) { lastLoad = Date.now(); next(); }
+    }, 1000);
+    next();
+  }
+
+  function open(host, poll) {
+    var mine = ++run;
+    drop(shown);
+    shown = null;
+    everShown = false;
+    base = 'http://' + host;
+    wait.style.display = 'block';
+    report('connecting', base + ' (page on ' + location.protocol + ', ' + navigator.userAgent + ')');
+    if (poll) startPolling(mine);
+    else startStream(mine);
+  }
+
+  context.addCustomMessageListener(NS, function (event) {
+    var msg = event.data;
+    if (!msg || typeof msg !== 'object') return;
+    sender = event.senderId;
+    if (msg.type === 'screen' && typeof msg.host === 'string') open(msg.host, msg.poll === true);
+  });
+
+  var options = new cast.framework.CastReceiverOptions();
+  options.disableIdleTimeout = true;  // not a media app: no media session keeps it alive
+  options.skipPlayersLoad = true;
+  options.customNamespaces = {};
+  options.customNamespaces[NS] = cast.framework.system.MessageType.JSON;
+  context.start(options);
+})();
+</script>
+</body>
+</html>
