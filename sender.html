@@ -19,7 +19,6 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
 <label>Dirección de la tele que sale en el juego
   <input id="host" type="text" inputmode="url" autocomplete="off" placeholder="http://192.168.1.20:4061">
 </label>
-<label><input id="poll" type="checkbox"> Imagen a imagen</label>
 <p><google-cast-launcher></google-cast-launcher> <button id="send">Volver a enviar</button> <span id="state"></span></p>
 <pre id="log"></pre>
 <script>
@@ -28,7 +27,6 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
   var NS = 'urn:x-cast:com.holdontrooper.screen';
   var APP_ID = 'CA1529D1';
   var hostInput = document.getElementById('host');
-  var pollInput = document.getElementById('poll');
   var logBox = document.getElementById('log');
   var session = null;
 
@@ -49,7 +47,7 @@ pre { white-space: pre-wrap; word-break: break-word; font: 13px/1.4 monospace; c
     if (!session) { log('Pulsa antes el botón Cast.'); return; }
     if (!host()) { log('Escribe la dirección que sale en el juego.'); return; }
     try { localStorage.setItem('castHost', hostInput.value.trim()); } catch (x) {}
-    session.sendMessage(NS, { type: 'screen', host: host(), poll: pollInput.checked }).catch(function (e) {
+    session.sendMessage(NS, { type: 'screen', host: host() }).catch(function (e) {
       log('No se pudo enviar: ' + JSON.stringify(e));
     });
   }
