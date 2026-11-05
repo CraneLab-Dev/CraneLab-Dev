@@ -19,7 +19,7 @@ img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit
 (function () {
   'use strict';
   var NS = 'urn:x-cast:com.holdontrooper.screen';
-  var POLL_RETRY_MS = 500, POLL_STALL_MS = 3000, REPORT_MS = 2000;
+  var POLL_RETRY_MS = 500, POLL_STALL_MS = 3000, REPORT_MS = 2000, FIRST_FRAME_MS = 3000;
   var POLL_FAILURES = 5;
 
   var context = cast.framework.CastReceiverContext.getInstance();
@@ -94,21 +94,43 @@ img { position: absolute; left: 0; top: 0; width: 100%; height: 100%; object-fit
     next();
   }
 
-  function open(host) {
+  // Pictures as the phone makes them, with no round trip between two; a slow TV can fall behind.
+  function startStream(mine) {
+    var img = make(base + '/stream?' + (++serial));
+    var waited = 0;
+    var timer = setInterval(function () {
+      if (mine !== run) { clearInterval(timer); drop(img); return; }
+      if (img.naturalWidth > 0) {
+        clearInterval(timer);
+        show(img);
+        report('playing', 'stream ' + img.naturalWidth + 'x' + img.naturalHeight);
+        return;
+      }
+      waited += 100;
+      if (waited < FIRST_FRAME_MS) return;
+      clearInterval(timer);
+      drop(img);
+      report('fallback', 'no stream: one picture at a time');
+      startPolling(mine);
+    }, 100);
+  }
+
+  function open(host, stream) {
     var mine = ++run;
     drop(shown);
     shown = null;
     base = 'http://' + host;
     wait.style.display = 'block';
     report('connecting', base + ' (page on ' + location.protocol + ', ' + navigator.userAgent + ')');
-    startPolling(mine);
+    if (stream) startStream(mine);
+    else startPolling(mine);
   }
 
   context.addCustomMessageListener(NS, function (event) {
     var msg = event.data;
     if (!msg || typeof msg !== 'object') return;
     sender = event.senderId;
-    if (msg.type === 'screen' && typeof msg.host === 'string') open(msg.host);
+    if (msg.type === 'screen' && typeof msg.host === 'string') open(msg.host, msg.stream === true);
   });
 
   var options = new cast.framework.CastReceiverOptions();
